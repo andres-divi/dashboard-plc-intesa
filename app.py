@@ -480,7 +480,7 @@ if uploaded_files:
                         xaxis=dict(
                             type='date',
                             tickformat='%H:%M:%S\n%d/%m/%Y',
-                            range=[t_desde, t_hasta],
+                            range=[t_desde.isoformat(), t_hasta.isoformat()],
                         ),
                     )
                     return fig
