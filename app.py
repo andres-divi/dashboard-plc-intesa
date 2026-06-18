@@ -207,7 +207,9 @@ if not uploaded_files:
 
     carpeta_fotos = Path("fotos_familia")
     extensiones = {".jpg", ".jpeg", ".png", ".webp"}
-    fotos = sorted([f for f in carpeta_fotos.iterdir() if f.suffix.lower() in extensiones])
+    fotos = []
+    if carpeta_fotos.exists() and carpeta_fotos.is_dir():
+        fotos = sorted([f for f in carpeta_fotos.iterdir() if f.suffix.lower() in extensiones])
 
     if fotos:
         cols_por_fila = 3
