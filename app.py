@@ -201,24 +201,6 @@ if not uploaded_files:
         unsafe_allow_html=True,
     )
 
-    # Collage dinámico: lee TODAS las fotos de la carpeta fotos_familia automáticamente
-    import os
-    from pathlib import Path
-
-    carpeta_fotos = Path("fotos_familia")
-    extensiones = {".jpg", ".jpeg", ".png", ".webp"}
-    fotos = []
-    if carpeta_fotos.exists() and carpeta_fotos.is_dir():
-        fotos = sorted([f for f in carpeta_fotos.iterdir() if f.suffix.lower() in extensiones])
-
-    if fotos:
-        cols_por_fila = 3
-        for i in range(0, len(fotos), cols_por_fila):
-            cols = st.columns(cols_por_fila)
-            for j, foto in enumerate(fotos[i:i + cols_por_fila]):
-                with cols[j]:
-                    st.image(str(foto), use_container_width=True)
-
     st.markdown("<br>", unsafe_allow_html=True)
 
 
@@ -540,6 +522,139 @@ if uploaded_files:
                 if st.button("➕  Agregar otro gráfico", use_container_width=True, type="primary"):
                     st.session_state.graficos_extra.append(columnas_numericas[:1])
                     st.rerun()
+
+                # ══════════════════════════════════════════════════════════════
+                # SUPERPOSICIÓN DE VARIABLES CON EJES INDEPENDIENTES
+                # ══════════════════════════════════════════════════════════════
+                st.markdown("---")
+                st.markdown("#### 🔀 Superponer variables con ejes independientes")
+                st.caption(
+                    "Graficá múltiples variables en un mismo panel. "
+                    "Cada variable tiene su **propio eje Y** y su **propio color**, "
+                    "lo que permite comparar magnitudes muy distintas (ej: presión y temperatura)."
+                )
+
+                vars_superponer = st.multiselect(
+                    "Variables a superponer:",
+                    options=columnas_numericas,
+                    default=[],
+                    key="vars_superponer",
+                    help="Elegí 2 o más variables para ver su superposición con ejes independientes.",
+                )
+
+                if vars_superponer:
+                    COLORES_SUPER = [
+                        '#00d4ff', '#ff6b6b', '#ffd93d', '#6bcb77',
+                        '#a855f7', '#fb923c', '#ec4899', '#14b8a6',
+                        '#f59e0b', '#3b82f6',
+                    ]
+
+                    # ── Calcular escala automática como base ───────────────────
+                    escalas = {}
+                    for var in vars_superponer:
+                        v_min_d = float(df_plot[var].min())
+                        v_max_d = float(df_plot[var].max())
+                        margen  = (v_max_d - v_min_d) * 0.1 if v_max_d != v_min_d else 1.0
+                        escalas[var] = (v_min_d - margen, v_max_d + margen)
+
+                    # ── Expander de ajuste de escala por variable ─────────────
+                    with st.expander("⚙️ Ajustar escala de cada variable", expanded=False):
+                        n_cols_esc = min(len(vars_superponer), 3)
+                        cols_esc   = st.columns(n_cols_esc)
+                        for idx, var in enumerate(vars_superponer):
+                            with cols_esc[idx % n_cols_esc]:
+                                color_var = COLORES_SUPER[idx % len(COLORES_SUPER)]
+                                st.markdown(
+                                    f"<span style='color:{color_var}; font-weight:700; "
+                                    f"font-size:0.95rem;'>■ {var}</span>",
+                                    unsafe_allow_html=True,
+                                )
+                                col_min_i, col_max_i = st.columns(2)
+                                with col_min_i:
+                                    min_usr = st.number_input(
+                                        "Mín",
+                                        value=round(escalas[var][0], 6),
+                                        key=f"super_min_{var}",
+                                        format="%g",
+                                    )
+                                with col_max_i:
+                                    max_usr = st.number_input(
+                                        "Máx",
+                                        value=round(escalas[var][1], 6),
+                                        key=f"super_max_{var}",
+                                        format="%g",
+                                    )
+                                escalas[var] = (min_usr, max_usr)
+
+                    # ── Construir figura con múltiples ejes Y ─────────────────
+                    n_vars   = len(vars_superponer)
+                    n_right  = max(0, n_vars - 1)
+                    # El dominio X se achica para hacer lugar a los ejes derechos
+                    x_end    = max(0.55, 1.0 - n_right * 0.09)
+
+                    fig_super = go.Figure()
+
+                    for idx, var in enumerate(vars_superponer):
+                        color     = COLORES_SUPER[idx % len(COLORES_SUPER)]
+                        yaxis_ref = 'y' if idx == 0 else f'y{idx + 1}'
+                        fig_super.add_trace(go.Scatter(
+                            x=df_plot[col_datetime],
+                            y=df_plot[var],
+                            mode='lines',
+                            name=var,
+                            line=dict(color=color, width=1.8),
+                            yaxis=yaxis_ref,
+                        ))
+
+                    layout_super = dict(
+                        template='plotly_dark',
+                        title='🔀 Superposición de Variables',
+                        xaxis=dict(
+                            title='Tiempo',
+                            type='date',
+                            tickformat='%H:%M:%S\n%d/%m/%Y',
+                            range=[t_desde.isoformat(), t_hasta.isoformat()],
+                            domain=[0, x_end],
+                        ),
+                        hovermode='x unified',
+                        margin=dict(l=60, r=50 + n_right * 75, t=65, b=40),
+                        legend=dict(
+                            orientation='h',
+                            yanchor='bottom', y=1.06,
+                            xanchor='left', x=0,
+                        ),
+                        height=540,
+                    )
+
+                    for idx, var in enumerate(vars_superponer):
+                        color      = COLORES_SUPER[idx % len(COLORES_SUPER)]
+                        min_v, max_v = escalas[var]
+                        yaxis_key  = 'yaxis' if idx == 0 else f'yaxis{idx + 1}'
+
+                        if idx == 0:
+                            layout_super[yaxis_key] = dict(
+                                title=dict(text=var, font=dict(color=color)),
+                                tickfont=dict(color=color),
+                                range=[min_v, max_v],
+                                gridcolor='rgba(255,255,255,0.07)',
+                            )
+                        else:
+                            pos_right = min(x_end + (idx - 1) * 0.09 + 0.03, 1.0)
+                            layout_super[yaxis_key] = dict(
+                                title=dict(text=var, font=dict(color=color)),
+                                tickfont=dict(color=color),
+                                overlaying='y',
+                                side='right',
+                                position=pos_right,
+                                range=[min_v, max_v],
+                                showgrid=False,
+                            )
+
+                    fig_super.update_layout(**layout_super)
+                    st.plotly_chart(fig_super, use_container_width=True)
+
+                else:
+                    st.info("👆 Seleccioná 2 o más variables arriba para ver la superposición con ejes independientes.")
 
         elif variables_seleccionadas and not col_datetime:
             st.error("Corregí la columna de tiempo antes de graficar.")
