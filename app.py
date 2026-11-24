@@ -602,7 +602,7 @@ if uploaded_files:
                             y=df_plot[var],
                             mode='lines',
                             name=var,
-                            line=dict(color=color, width=1.8),
+                            line=dict(color=color, width=1),
                             yaxis=yaxis_ref,
                         ))
 
@@ -633,21 +633,29 @@ if uploaded_files:
 
                         if idx == 0:
                             layout_super[yaxis_key] = dict(
-                                title=dict(text=var, font=dict(color=color)),
-                                tickfont=dict(color=color),
+                                title=dict(text='', font=dict(color=color, size=10)),
+                                tickfont=dict(color=color, size=9),
+                                tickformat='.3g',
+                                nticks=6,
                                 range=[min_v, max_v],
                                 gridcolor='rgba(255,255,255,0.07)',
+                                linecolor=color,
+                                linewidth=1,
                             )
                         else:
-                            pos_right = min(x_end + (idx - 1) * 0.09 + 0.03, 1.0)
+                            pos_right = min(x_end + (idx - 1) * 0.08 + 0.02, 1.0)
                             layout_super[yaxis_key] = dict(
-                                title=dict(text=var, font=dict(color=color)),
-                                tickfont=dict(color=color),
+                                title=dict(text='', font=dict(color=color, size=10)),
+                                tickfont=dict(color=color, size=9),
+                                tickformat='.3g',
+                                nticks=6,
                                 overlaying='y',
                                 side='right',
                                 position=pos_right,
                                 range=[min_v, max_v],
                                 showgrid=False,
+                                linecolor=color,
+                                linewidth=1,
                             )
 
                     fig_super.update_layout(**layout_super)
