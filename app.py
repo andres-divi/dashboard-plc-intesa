@@ -614,10 +614,9 @@ if uploaded_files:
                             type='date',
                             tickformat='%H:%M:%S\n%d/%m/%Y',
                             range=[t_desde.isoformat(), t_hasta.isoformat()],
-                            domain=[0, x_end],
                         ),
                         hovermode='x unified',
-                        margin=dict(l=60, r=50 + n_right * 75, t=65, b=40),
+                        margin=dict(l=60, r=20 + n_right * 55, t=65, b=40),
                         legend=dict(
                             orientation='h',
                             yanchor='bottom', y=1.06,
@@ -643,7 +642,6 @@ if uploaded_files:
                                 linewidth=1,
                             )
                         else:
-                            pos_right = min(x_end + (idx - 1) * 0.08 + 0.02, 1.0)
                             layout_super[yaxis_key] = dict(
                                 title=dict(text='', font=dict(color=color, size=10)),
                                 tickfont=dict(color=color, size=9),
@@ -651,7 +649,7 @@ if uploaded_files:
                                 nticks=6,
                                 overlaying='y',
                                 side='right',
-                                position=pos_right,
+                                autoshift=True,
                                 range=[min_v, max_v],
                                 showgrid=False,
                                 linecolor=color,
