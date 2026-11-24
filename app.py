@@ -616,7 +616,7 @@ if uploaded_files:
                             range=[t_desde.isoformat(), t_hasta.isoformat()],
                         ),
                         hovermode='x unified',
-                        margin=dict(l=60, r=20 + n_right * 55, t=65, b=40),
+                        margin=dict(l=60, r=20, t=65, b=40),
                         legend=dict(
                             orientation='h',
                             yanchor='bottom', y=1.06,
