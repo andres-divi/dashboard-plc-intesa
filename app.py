@@ -440,16 +440,56 @@ if uploaded_files:
                     f"hasta **{t_hasta.strftime('%d/%m/%Y %H:%M')}**"
                 )
 
+                # ── Promedio móvil por variable ──────────────────────────────
+                # El PLC mide cada pocos segundos y algunas señales quedan "serrucho".
+                # Cada variable de cada gráfico puede promediarse cada N mediciones
+                # (media móvil centrada; N = 1 deja la señal original).
+                def selector_promedios(variables, key_prefix):
+                    """Muestra un selector 'promediar cada N mediciones' por variable."""
+                    ventanas = {}
+                    if not variables:
+                        return ventanas
+                    st.caption(
+                        "🔧 **Promediar cada N mediciones** (1 = sin promedio). "
+                        "Sirve para suavizar señales que quedan en serrucho."
+                    )
+                    n_cols = min(len(variables), 4)
+                    cols = st.columns(n_cols)
+                    for idx_v, var in enumerate(variables):
+                        with cols[idx_v % n_cols]:
+                            ventanas[var] = int(st.number_input(
+                                var,
+                                min_value=1,
+                                max_value=10000,
+                                value=1,
+                                step=1,
+                                key=f"{key_prefix}_prom_{var}",
+                                help="Cantidad de mediciones seguidas que se promedian para cada punto.",
+                            ))
+                    return ventanas
+
+                def serie_variable(var, n):
+                    """Serie de la variable dentro del rango elegido, promediada cada n mediciones."""
+                    serie = df[var]
+                    if n > 1:
+                        # Se calcula sobre todos los datos para que los bordes del rango no se deformen
+                        serie = serie.rolling(window=n, center=True, min_periods=1).mean()
+                    return serie.loc[mask]
+
+                def nombre_traza(var, n):
+                    return var if n <= 1 else f"{var} (prom. {n})"
+
                 # ── Función auxiliar para crear gráfico ──────────────────────
-                def crear_figura(variables, df_data, col_dt, titulo):
+                def crear_figura(variables, ventanas, df_data, col_dt, titulo):
                     fig = go.Figure()
                     for variable in variables:
+                        n = ventanas.get(variable, 1)
                         fig.add_trace(
                             go.Scatter(
                                 x=df_data[col_dt],
-                                y=df_data[variable],
+                                y=serie_variable(variable, n),
                                 mode='lines',
-                                name=variable,
+                                name=nombre_traza(variable, n),
                                 line=dict(width=1),
                             )
                         )
@@ -471,56 +511,71 @@ if uploaded_files:
 
                 # ===== GRÁFICO PRINCIPAL =====
                 st.markdown("#### 📈 Gráfico 1")
+                ventanas_principal = selector_promedios(variables_seleccionadas, "g1")
                 fig_principal = crear_figura(
-                    variables_seleccionadas, df_plot, col_datetime,
+                    variables_seleccionadas, ventanas_principal, df_plot, col_datetime,
                     "Evolución Temporal de Sensores"
                 )
                 st.plotly_chart(fig_principal, use_container_width=True)
 
                 # ── Inicializar lista de gráficos extra en session_state ──────
+                # Cada gráfico extra tiene un id fijo, así al quitar uno del medio
+                # los demás conservan sus variables y sus promedios.
                 if "graficos_extra" not in st.session_state:
+                    st.session_state.graficos_extra = []
+                if "proximo_id_grafico" not in st.session_state:
+                    st.session_state.proximo_id_grafico = 0
+                # Compatibilidad con sesiones abiertas con la versión anterior (lista de variables)
+                if any(not isinstance(g, dict) for g in st.session_state.graficos_extra):
                     st.session_state.graficos_extra = []
 
                 # ===== GRÁFICOS EXTRA =====
-                indices_a_eliminar = []
-                for i, vars_grafico in enumerate(st.session_state.graficos_extra):
+                ids_a_eliminar = []
+                for i, grafico in enumerate(st.session_state.graficos_extra):
+                    gid = grafico["id"]
                     st.markdown("---")
                     col_titulo, col_eliminar = st.columns([9, 1])
                     with col_titulo:
                         st.markdown(f"#### 📈 Gráfico {i + 2}")
                     with col_eliminar:
                         st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("✕ Quitar", key=f"eliminar_{i}", type="secondary"):
-                            indices_a_eliminar.append(i)
+                        if st.button("✕ Quitar", key=f"eliminar_{gid}", type="secondary"):
+                            ids_a_eliminar.append(gid)
 
                     vars_seleccionadas_extra = st.multiselect(
                         f"Variables para el Gráfico {i + 2}:",
                         options=columnas_numericas,
-                        default=[v for v in vars_grafico if v in columnas_numericas],
-                        key=f"vars_grafico_{i}",
+                        default=[v for v in grafico["vars"] if v in columnas_numericas],
+                        key=f"vars_grafico_{gid}",
                     )
                     # Guardar selección actualizada
-                    st.session_state.graficos_extra[i] = vars_seleccionadas_extra
+                    grafico["vars"] = vars_seleccionadas_extra
 
                     if vars_seleccionadas_extra:
+                        ventanas_extra = selector_promedios(vars_seleccionadas_extra, f"g{gid}x")
                         fig_extra = crear_figura(
-                            vars_seleccionadas_extra, df_plot, col_datetime,
+                            vars_seleccionadas_extra, ventanas_extra, df_plot, col_datetime,
                             f"Gráfico {i + 2}"
                         )
                         st.plotly_chart(fig_extra, use_container_width=True)
                     else:
                         st.info("👈 Seleccioná al menos una variable para este gráfico.")
 
-                # Eliminar gráficos marcados (en orden inverso)
-                if indices_a_eliminar:
-                    for idx in sorted(indices_a_eliminar, reverse=True):
-                        st.session_state.graficos_extra.pop(idx)
+                # Eliminar gráficos marcados
+                if ids_a_eliminar:
+                    st.session_state.graficos_extra = [
+                        g for g in st.session_state.graficos_extra if g["id"] not in ids_a_eliminar
+                    ]
                     st.rerun()
 
                 # ── Botón para agregar nuevo gráfico ─────────────────────────
                 st.markdown("---")
                 if st.button("➕  Agregar otro gráfico", use_container_width=True, type="primary"):
-                    st.session_state.graficos_extra.append(columnas_numericas[:1])
+                    st.session_state.graficos_extra.append({
+                        "id": st.session_state.proximo_id_grafico,
+                        "vars": columnas_numericas[:1],
+                    })
+                    st.session_state.proximo_id_grafico += 1
                     st.rerun()
 
                 # ══════════════════════════════════════════════════════════════
@@ -549,11 +604,18 @@ if uploaded_files:
                         '#f59e0b', '#3b82f6',
                     ]
 
+                    # ── Promedio por variable ─────────────────────────────────
+                    ventanas_super = selector_promedios(vars_superponer, "super")
+                    series_super = {
+                        var: serie_variable(var, ventanas_super.get(var, 1))
+                        for var in vars_superponer
+                    }
+
                     # ── Calcular escala automática como base ───────────────────
                     escalas = {}
                     for var in vars_superponer:
-                        v_min_d = float(df_plot[var].min())
-                        v_max_d = float(df_plot[var].max())
+                        v_min_d = float(series_super[var].min())
+                        v_max_d = float(series_super[var].max())
                         margen  = (v_max_d - v_min_d) * 0.1 if v_max_d != v_min_d else 1.0
                         escalas[var] = (v_min_d - margen, v_max_d + margen)
 
@@ -599,9 +661,9 @@ if uploaded_files:
                         yaxis_ref = 'y' if idx == 0 else f'y{idx + 1}'
                         fig_super.add_trace(go.Scatter(
                             x=df_plot[col_datetime],
-                            y=df_plot[var],
+                            y=series_super[var],
                             mode='lines',
-                            name=var,
+                            name=nombre_traza(var, ventanas_super.get(var, 1)),
                             line=dict(color=color, width=1),
                             yaxis=yaxis_ref,
                         ))
